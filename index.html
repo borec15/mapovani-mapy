@@ -103,7 +103,8 @@ function chips(){
 async function show(slug){
   if (!SEZNAM.some(v => v.slug === slug)) slug = VIDITELNE[0].slug;  // skryté video jde otevřít přímým odkazem #slug
   document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === slug));
-  document.querySelector(`.chip[data-s="${slug}"]`)?.scrollIntoView({inline:'center', block:'nearest'});
+  const ch = document.querySelector(`.chip[data-s="${slug}"]`), row = document.getElementById('chips');
+  if (ch) row.scrollLeft = ch.offsetLeft - (row.clientWidth - ch.offsetWidth) / 2;
   const d = await loadData(slug); cur = d;
   document.getElementById('load').style.display = 'none';
   if (layer) map.removeLayer(layer);
