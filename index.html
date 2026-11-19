@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mapy z videí · @mapovani</title>
+<meta name="description" content="Přesné trasy z videí @mapovani – každá hospoda, každý kilometr. Přibliž si své město.">
+<meta property="og:title" content="Mapy z videí · @mapovani">
+<meta property="og:description" content="Přesné trasy z videí – každá hospoda, každý kilometr.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap">
+<style>
+:root{--bg:#0b0d12;--panel:rgba(16,19,26,.92);--line:#262b36;--txt:#ece9e2;--dim:#9a9fab;--gold:#f5b83d;--start:#7cfc9a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:Inter,system-ui,-apple-system,sans-serif}
+#map{position:fixed;inset:0;background:var(--bg)}
+.top{position:fixed;z-index:1000;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top) + 10px) 12px 10px;
+  background:linear-gradient(var(--bg) 55%,rgba(11,13,18,0));pointer-events:none}
+.top>*{pointer-events:auto}
+.brand{display:flex;align-items:baseline;gap:8px;margin:0 4px 8px}
+.brand b{font-weight:800;font-size:17px}
+.brand span{color:var(--dim);font-size:13px}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:999px;
+  padding:7px 12px;font:600 13px Inter,sans-serif;cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--gold);color:#1a1205;border-color:var(--gold)}
+.stats{margin:8px 4px 0;font-size:13px;color:var(--dim)}
+.stats b{color:var(--txt)}
+.bottom{position:fixed;z-index:1000;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);
+  display:flex;gap:8px;max-width:520px;margin:0 auto}
+.search{flex:1;position:relative}
+.search input{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:12px;
+  padding:12px 14px;font:16px Inter,sans-serif;outline:none}
+.search input:focus{border-color:var(--gold)}
+.res{position:absolute;bottom:52px;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  max-height:45vh;overflow-y:auto;display:none}
+.res div{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+.res div:last-child{border-bottom:0}
+.res small{color:var(--dim)}
+.btn{flex:none;border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:12px;width:48px;
+  font-size:20px;cursor:pointer}
+.leaflet-container{background:var(--bg);font-family:Inter,sans-serif}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#151922;color:var(--txt);box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.leaflet-popup-content{margin:12px 14px;font-size:14px;line-height:1.4}
+.leaflet-popup-content b{font-size:15px}
+.leaflet-popup-content a{color:var(--gold)}
+.leaflet-container a.leaflet-popup-close-button{color:var(--dim)}
+.leaflet-control-attribution{background:rgba(11,13,18,.7)!important;color:#777!important;font-size:10px}
+.leaflet-control-attribution a{color:#999!important}
+.leaflet-control-zoom{display:none}
+.num{color:var(--gold);font-weight:800}
+.load{position:fixed;inset:0;display:grid;place-items:center;z-index:2000;background:var(--bg);color:var(--dim);font-size:14px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="top">
+  <div class="brand"><b>@mapovani</b><span>mapy z videí</span></div>
+  <div class="chips" id="chips"></div>
+  <div class="stats" id="stats"></div>
+</div>
+<div class="bottom">
+  <div class="search"><input id="q" type="search" placeholder="Najdi hospodu nebo město…" autocomplete="off"><div class="res" id="res"></div></div>
+  <button class="btn" id="loc" title="Nejbližší hospoda u mě">📍</button>
+</div>
+<div class="load" id="load">Načítám mapu…</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="data/seznam.js"></script>
+<script>
+const map = L.map('map', {zoomControl:false, preferCanvas:true, zoomSnap:.25, attributionControl:true}).setView([49.8, 15.5], 7);
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
+L.tileLayer(ESRI + 'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, maxNativeZoom:16,
+  attribution: 'Data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Podklad © Esri'}).addTo(map);
+map.createPane('popisky'); map.getPane('popisky').style.zIndex = 450; map.getPane('popisky').style.pointerEvents = 'none';
+L.tileLayer(ESRI + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, maxNativeZoom:16, pane:'popisky'}).addTo(map);
+const dnes = new Date().toISOString().slice(0, 10);
+const VIDITELNE = SEZNAM.filter(v => v.datum && v.datum <= dnes);  // bez data / budoucí datum = zatím skryté
+const canvas = L.canvas({padding: .5, tolerance: 6});
+let layer = null, cur = null;
+const fmt = n => n.toLocaleString('cs-CZ');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mapyCz = (la, lo) => `https://mapy.com/fnc/v1/showmap?mapset=basic&center=${lo},${la}&zoom=18&marker=true`;
+
+function decode(d){ const out=[]; let a=0,o=0; for(let i=0;i<d.length;i+=2){a+=d[i];o+=d[i+1];out.push([a/1e5,o/1e5]);} return out; }
+
+function loadData(slug){
+  return new Promise((ok, err) => {
+    if (window.VIDEA && VIDEA[slug]) return ok(VIDEA[slug]);
+    const s = document.createElement('script'); s.src = `data/${slug}.js`;
+    s.onload = () => ok(VIDEA[slug]); s.onerror = err; document.head.appendChild(s);
+  });
+}
+
+function chips(){
+  const el = document.getElementById('chips');
+  el.innerHTML = VIDITELNE.map(v => `<button class="chip" data-s="${v.slug}">${esc(v.nazev)}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('.chip'); if (b) location.hash = b.dataset.s; };
+}
+
+async function show(slug){
+  if (!SEZNAM.some(v => v.slug === slug)) slug = VIDITELNE[0].slug;  // skryté video jde otevřít přímým odkazem #slug
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === slug));
+  document.querySelector(`.chip[data-s="${slug}"]`)?.scrollIntoView({inline:'center', block:'nearest'});
+  const d = await loadData(slug); cur = d;
+  document.getElementById('load').style.display = 'none';
+  if (layer) map.removeLayer(layer);
+  layer = L.layerGroup().addTo(map);
+  const line = decode(d.trasa), big = d.n > 2000;
+  L.polyline(line, {renderer:canvas, color:'#f5b83d', weight:big?6:9, opacity:.18, interactive:false}).addTo(layer);
+  L.polyline(line, {renderer:canvas, color:'#f5b83d', weight:big?1.6:2.6, opacity:.95, interactive:false}).addTo(layer);
+  (d.nav||[]).forEach(p => L.circleMarker(p, {renderer:canvas, radius:2.5, color:'#555', weight:0, fillOpacity:.8, interactive:false}).addTo(layer));
+  const slovo = d.typ === 'pivovar' ? 'pivovar' : (d.maraton ? 'zastávka' : 'hospoda');
+  d.body.forEach((b, i) => {
+    const start = i === 0;
+    const m = L.circleMarker([b[0], b[1]], {renderer:canvas, radius:start?7:rad(big), color:'#0b0d12', weight:1,
+      fillColor:start?'#7cfc9a':'#ffe7a8', fillOpacity:1});
+    m.bindPopup(() => `<span class="num">${start?'START · ':''}${fmt(i+1)}. ${slovo}</span> z ${fmt(d.n)}<br><b>${esc(b[2])}</b>`
+      + (b[4] ? `<br>${esc(b[4])}` : '') + `<br>${fmt(b[3])} km od startu`
+      + `<br><a href="${mapyCz(b[0], b[1])}" target="_blank" rel="noopener">Otevřít na Mapy.cz ↗</a>`);
+    m._i = i; m._start = start; m.addTo(layer);
+  });
+  document.getElementById('stats').innerHTML = `<b>${fmt(d.n)}</b> ${d.typ==='pivovar'?'pivovarů':(d.maraton?'hospod na trase':'hospod')} · <b>${fmt(d.km)} km</b>`
+    + (d.datum ? ` · video z ${new Date(d.datum).toLocaleDateString('cs-CZ')}` : '');
+  map.fitBounds(L.latLngBounds(line), {paddingTopLeft:[8,110], paddingBottomRight:[8,70]});
+  restyle();
+  document.getElementById('q').value = ''; document.getElementById('res').style.display = 'none';
+}
+
+function rad(big){ const z = map.getZoom(); return big ? (z < 8 ? 1.2 : z < 10 ? 2 : z < 13 ? 3.5 : 5) : (z < 11 ? 2.5 : z < 13 ? 4 : 5.5); }
+function restyle(){ if (!layer || !cur) return; const big = cur.n > 2000;
+  layer.eachLayer(l => { if (l._i !== undefined && !l._start) l.setRadius(rad(big)); }); }
+map.on('zoomend', restyle);
+
+function openPoint(i){
+  const b = cur.body[i]; map.setView([b[0], b[1]], 17);
+  layer.eachLayer(l => { if (l._i === i) setTimeout(() => l.openPopup(), 300); });
+}
+
+const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+document.getElementById('q').addEventListener('input', e => {
+  const q = norm(e.target.value.trim()), res = document.getElementById('res');
+  if (q.length < 2 || !cur) { res.style.display = 'none'; return; }
+  const hits = [];
+  for (let i = 0; i < cur.body.length && hits.length < 30; i++) {
+    const b = cur.body[i]; if (norm(b[2]).includes(q) || norm(b[4]).includes(q)) hits.push(i);
+  }
+  res.innerHTML = hits.length ? hits.map(i => `<div data-i="${i}"><b>${esc(cur.body[i][2])}</b> <small>${esc(cur.body[i][4])} · ${fmt(i+1)}. na trase</small></div>`).join('')
+    : '<div><small>Nic nenalezeno – v tomhle videu není.</small></div>';
+  res.style.display = 'block';
+});
+document.getElementById('res').onclick = e => { const r = e.target.closest('[data-i]'); if (!r) return;
+  document.getElementById('res').style.display = 'none'; document.getElementById('q').blur(); openPoint(+r.dataset.i); };
+
+document.getElementById('loc').onclick = () => {
+  if (!navigator.geolocation || !cur) return;
+  navigator.geolocation.getCurrentPosition(p => {
+    const la = p.coords.latitude, lo = p.coords.longitude; let bi = 0, bd = 1e9;
+    cur.body.forEach((b, i) => { const d = (b[0]-la)**2 + ((b[1]-lo)*Math.cos(la*Math.PI/180))**2; if (d < bd) { bd = d; bi = i; } });
+    L.circleMarker([la, lo], {radius:7, color:'#fff', weight:2, fillColor:'#3d8bff', fillOpacity:1}).addTo(layer);
+    openPoint(bi);
+  }, () => alert('Polohu se nepodařilo zjistit.'));
+};
+
+chips();
+window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+show(location.hash.slice(1));
+</script>
+</body>
+</html>
