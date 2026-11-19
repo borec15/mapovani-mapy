@@ -68,7 +68,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 <div class="load" id="load">Načítám mapu…</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="data/seznam.js"></script>
+<script>document.write('<script src="data/seznam.js?t=' + Date.now() + '"><\/script>')</script>
 <script>
 const map = L.map('map', {zoomControl:false, preferCanvas:true, zoomSnap:.25, attributionControl:true}).setView([49.8, 15.5], 7);
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
@@ -89,7 +89,7 @@ function decode(d){ const out=[]; let a=0,o=0; for(let i=0;i<d.length;i+=2){a+=d
 function loadData(slug){
   return new Promise((ok, err) => {
     if (window.VIDEA && VIDEA[slug]) return ok(VIDEA[slug]);
-    const s = document.createElement('script'); s.src = `data/${slug}.js`;
+    const s = document.createElement('script'); const e = SEZNAM.find(v => v.slug === slug) || {}; s.src = `data/${slug}.js?v=${e.n}-${e.km}-${e.datum}`;
     s.onload = () => ok(VIDEA[slug]); s.onerror = err; document.head.appendChild(s);
   });
 }
